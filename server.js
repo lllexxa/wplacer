@@ -253,12 +253,13 @@ class SuspensionError extends Error {
 
 // --- WPlacer with old painting modes ported over ---
 class WPlacer {
-  constructor(template, coords, settings, templateName, paintTransparentPixels = false, initialBurstSeeds = null) {
+  constructor(template, coords, settings, templateName, paintTransparentPixels = false, initialBurstSeeds = null, skipPaintedPixels = false) {
     this.template = template;
     this.templateName = templateName;
     this.coords = coords;
     this.settings = settings;
     this.paintTransparentPixels = !!paintTransparentPixels;
+    this.skipPaintedPixels = !!skipPaintedPixels;
 
     this.cookies = null;
     this.browser = null;
@@ -706,7 +707,7 @@ class WPlacer {
 
         const tileColor = tile.data[localPx][localPy];
 
-        if (templateColor !== tileColor && this.hasColor(templateColor)) {
+        if (templateColor !== tileColor && this.hasColor(templateColor) && (!this.skipPaintedPixels || tileColor === 0)) {
           mismatched.push({ tx: targetTx, ty: targetTy, px: localPx, py: localPy, color: templateColor });
         }
       }
@@ -1071,6 +1072,7 @@ class WPlacer {
         const tile = this.tiles.get(`${targetTx}_${targetTy}`);
         if (!tile || !tile.data[localPx]) continue;
         const tileColor = tile.data[localPx][localPy];
+        if (this.skipPaintedPixels && tileColor !== 0) continue;
         if (templateColor !== tileColor) count++;
       }
     }
@@ -1096,6 +1098,7 @@ class WPlacer {
         const tile = this.tiles.get(`${targetTx}_${targetTy}`);
         if (!tile || !tile.data[localPx]) continue;
         const tileColor = tile.data[localPx][localPy];
+        if (this.skipPaintedPixels && tileColor !== 0) continue;
         if (templateColor !== tileColor) {
           total++;
           if (templateColor >= 32) { premium++; premiumColors.add(templateColor); }
@@ -1131,7 +1134,8 @@ const saveTemplates = () => {
       antiGriefMode: t.antiGriefMode,
       userIds: t.userIds,
       paintTransparentPixels: t.paintTransparentPixels,
-      burstSeeds: t.burstSeeds || null
+      burstSeeds: t.burstSeeds || null,
+      skipPaintedPixels: t.skipPaintedPixels
     };
   }
   saveJSON("templates.json", templatesToSave);
@@ -1328,7 +1332,7 @@ function logUserError(error, id, name, context) {
 
 // --- Template Manager ---
 class TemplateManager {
-  constructor(name, templateData, coords, canBuyCharges, canBuyMaxCharges, antiGriefMode, userIds, paintTransparentPixels = false) {
+  constructor(name, templateData, coords, canBuyCharges, canBuyMaxCharges, antiGriefMode, userIds, paintTransparentPixels = false, skipPaintedPixels = true) {
     this.name = name;
     this.template = templateData;
     this.coords = coords;
@@ -1343,6 +1347,7 @@ class TemplateManager {
     this._resyncCooldownMs = 3000;
 
     this.paintTransparentPixels = !!paintTransparentPixels; // NEW: per-template flag like old version
+    this.skipPaintedPixels = !!skipPaintedPixels
     this.burstSeeds = null; // persist across runs
 
     this.running = false;
@@ -1574,7 +1579,7 @@ class TemplateManager {
               if (!rec) continue;
               if (activeBrowserUsers.has(uid)) continue;
               activeBrowserUsers.add(uid);
-              const w = new WPlacer(this.template, this.coords, currentSettings, this.name, this.paintTransparentPixels, this.burstSeeds);
+              const w = new WPlacer(this.template, this.coords, currentSettings, this.name, this.paintTransparentPixels, this.burstSeeds, this.skipPaintedPixels);
               try {
                 await w.login(rec.cookies); await w.loadUserInfo();
                 const cnt = Math.floor(Number(w.userInfo?.charges?.count || 0));
@@ -1597,7 +1602,7 @@ class TemplateManager {
             if (rec.suspendedUntil && Date.now() < rec.suspendedUntil) continue;
             if (activeBrowserUsers.has(uid)) continue;
             activeBrowserUsers.add(uid);
-            const w = new WPlacer(this.template, this.coords, currentSettings, this.name, this.paintTransparentPixels, this.burstSeeds);
+            const w = new WPlacer(this.template, this.coords, currentSettings, this.name, this.paintTransparentPixels, this.burstSeeds, this.skipPaintedPixels);
             try {
               await w.login(rec.cookies); await w.loadUserInfo();
               const cnt = Math.floor(Number(w.userInfo?.charges?.count || 0));
@@ -1619,7 +1624,7 @@ class TemplateManager {
         let summaryForTurn = null;
         const needFreshSummary = !this._lastSummary || (Date.now() - this._lastSummaryAt) >= this._summaryMinIntervalMs;
         if (needFreshSummary) {
-          const checkWplacer = new WPlacer(this.template, this.coords, currentSettings, this.name, this.paintTransparentPixels, this.burstSeeds);
+          const checkWplacer = new WPlacer(this.template, this.coords, currentSettings, this.name, this.paintTransparentPixels, this.burstSeeds, this.skipPaintedPixels);
           try {
             await checkWplacer.login(users[this.masterId].cookies);
             const summary = await checkWplacer.mismatchesSummary();
@@ -1810,7 +1815,7 @@ class TemplateManager {
             this._lastSwitchAt = Date.now();
           }
           activeBrowserUsers.add(foundUserForTurn);
-          const wplacer = new WPlacer(this.template, this.coords, currentSettings, this.name, this.paintTransparentPixels, this.burstSeeds);
+          const wplacer = new WPlacer(this.template, this.coords, currentSettings, this.name, this.paintTransparentPixels, this.burstSeeds, this.skipPaintedPixels);
           try {
             const { id, name } = await wplacer.login(users[foundUserForTurn].cookies);
             this.status = `Running user ${name}#${id}`;
@@ -1851,7 +1856,7 @@ class TemplateManager {
           // Buy charges if allowed (master only)
           if (this.canBuyCharges && !activeBrowserUsers.has(this.masterId)) {
             activeBrowserUsers.add(this.masterId);
-            const chargeBuyer = new WPlacer(this.template, this.coords, currentSettings, this.name, this.paintTransparentPixels, this.burstSeeds);
+            const chargeBuyer = new WPlacer(this.template, this.coords, currentSettings, this.name, this.paintTransparentPixels, this.burstSeeds, this.skipPaintedPixels);
             try {
               await chargeBuyer.login(users[this.masterId].cookies);
               const affordableDroplets = chargeBuyer.userInfo.droplets - currentSettings.dropletReserve;
@@ -2533,6 +2538,7 @@ app.get("/templates", (_, res) => {
       autoBuyNeededColors: !!t.autoBuyNeededColors,
       antiGriefMode: t.antiGriefMode,
       paintTransparentPixels: t.paintTransparentPixels,
+      skipPaintedPixels: t.skipPaintedPixels,
       userIds: t.userIds,
       running: t.running,
       status: t.status,
@@ -2544,7 +2550,7 @@ app.get("/templates", (_, res) => {
 });
 
 app.post("/template", async (req, res) => {
-  const { templateName, template, coords, userIds, canBuyCharges, canBuyMaxCharges, antiGriefMode, paintTransparentPixels } = req.body;
+  const { templateName, template, coords, userIds, canBuyCharges, canBuyMaxCharges, antiGriefMode, paintTransparentPixels, skipPaintedPixels } = req.body;
   if (!templateName || !template || !coords || !userIds || !userIds.length) return res.sendStatus(400);
   if (Object.values(templates).some((t) => t.name === templateName)) {
     return res.status(409).json({ error: "A template with this name already exists." });
@@ -2558,7 +2564,8 @@ app.post("/template", async (req, res) => {
     canBuyMaxCharges,
     antiGriefMode,
     userIds,
-    !!paintTransparentPixels
+    !!paintTransparentPixels,
+    !!skipPaintedPixels
   );
   if (typeof req.body.autoBuyNeededColors !== 'undefined') {
     templates[templateId].autoBuyNeededColors = !!req.body.autoBuyNeededColors;
@@ -2584,7 +2591,7 @@ app.put("/template/edit/:id", async (req, res) => {
   if (!templates[id]) return res.sendStatus(404);
   const manager = templates[id];
 
-  const { templateName, coords, userIds, canBuyCharges, canBuyMaxCharges, antiGriefMode, template, paintTransparentPixels } = req.body;
+  const { templateName, coords, userIds, canBuyCharges, canBuyMaxCharges, antiGriefMode, template, paintTransparentPixels, skipPaintedPixels } = req.body;
 
   const prevCoords = manager.coords;
   const prevTemplateStr = JSON.stringify(manager.template);
@@ -2605,6 +2612,10 @@ app.put("/template/edit/:id", async (req, res) => {
 
   if (typeof paintTransparentPixels !== "undefined") {
     manager.paintTransparentPixels = !!paintTransparentPixels;
+  }
+
+  if (typeof skipPaintedPixels !== "undefined") {
+    manager.skipPaintedPixels = !!skipPaintedPixels
   }
 
   if (template) {
@@ -2909,7 +2920,8 @@ const keepAlive = async () => {
         t.canBuyMaxCharges,
         t.antiGriefMode,
         t.userIds,
-        !!t.paintTransparentPixels
+        !!t.paintTransparentPixels,
+        !!t.skipPaintedPixels
       );
       tm.burstSeeds = t.burstSeeds || null;
       tm.autoBuyNeededColors = !!t.autoBuyNeededColors;

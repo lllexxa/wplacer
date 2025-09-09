@@ -41,6 +41,7 @@ const canBuyCharges = $("canBuyCharges");
 const autoBuyNeededColors = $("autoBuyNeededColors");
 const antiGriefMode = $("antiGriefMode");
 const paintTransparent = $("paintTransparent");
+const skipPaintedPixels = $("skipPaintedPixels");
 const submitTemplate = $("submitTemplate");
 const manageTemplates = $("manageTemplates");
 const templateList = $("templateList");
@@ -843,6 +844,7 @@ async function showManageTemplatePreview(t) {
         showOverlay: true,
         highlightMismatch: false,
         paintTransparent: !!t.paintTransparentPixels,
+        skipPaintedPixels: !!t.skipPaintedPixels,
         showHeatmap: false,
         heatmapEntries: null
     };
@@ -1373,7 +1375,8 @@ templateForm.addEventListener('submit', async (e) => {
         canBuyMaxCharges: canBuyMaxCharges.checked,
         autoBuyNeededColors: !!autoBuyNeededColors?.checked && !!(usePaidColors?.checked),
         antiGriefMode: antiGriefMode.checked,
-        paintTransparentPixels: !!paintTransparent.checked
+        paintTransparentPixels: !!paintTransparent.checked,
+        skipPaintedPixels: !!skipPaintedPixels
     };
 
     if (currentTemplate && currentTemplate.width > 0) {
@@ -2408,6 +2411,7 @@ openManageTemplates.addEventListener("click", () => {
                 if (t.canBuyMaxCharges) enabled.push('Buy max charges');
                 if (t.autoBuyNeededColors) enabled.push('Buy premium colors');
                 if (t.paintTransparentPixels) enabled.push('Paint transparent pixels');
+                if (t.skipPaintedPixels) enabled.push('Skip painted pixels')
                 if (t.antiGriefMode) enabled.push('Anti‑grief mode');
                 const enabledLine = enabled.length ? `<div><span class="t-templates-enabled">Enabled:</span> ${enabled.join(', ')}</div>` : '';
 
@@ -2507,6 +2511,7 @@ openManageTemplates.addEventListener("click", () => {
                     if (autoBuyNeededColors) autoBuyNeededColors.checked = !!t.autoBuyNeededColors;
                     antiGriefMode.checked = t.antiGriefMode;
                     paintTransparent.checked = !!t.paintTransparentPixels;
+                    skipPaintedPixels.checked = !!t.skipPaintedPixels;
 
 
                     if (autoBuyNeededColors?.checked) { canBuyCharges.checked = false; canBuyMaxCharges.checked = false; }
@@ -2978,6 +2983,7 @@ async function refreshActiveBar() {
                 canBuyMaxCharges.checked = t.canBuyMaxCharges;
                 antiGriefMode.checked = t.antiGriefMode;
                 paintTransparent.checked = !!t.paintTransparentPixels;
+                skipPaintedPixels.checked = !!t.skipPaintedPixels;
 
                 setTimeout(() => {
                     document.querySelectorAll('input[name="user_checkbox"]').forEach(cb => {
