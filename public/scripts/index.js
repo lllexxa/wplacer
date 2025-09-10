@@ -41,6 +41,7 @@ const canBuyCharges = $("canBuyCharges");
 const autoBuyNeededColors = $("autoBuyNeededColors");
 const antiGriefMode = $("antiGriefMode");
 const paintTransparent = $("paintTransparent");
+const skipPaintedPixels = $("skipPaintedPixels");
 const heatmapEnabled = $("heatmapEnabled");
 const heatmapLimit = $("heatmapLimit");
 const heatmapLimitWrap = $("heatmapLimitWrap");
@@ -949,6 +950,7 @@ async function showManageTemplatePreview(t) {
         showOverlay: true,
         highlightMismatch: false,
         paintTransparent: !!t.paintTransparentPixels,
+        skipPaintedPixels: !!t.skipPaintedPixels,
         overlayPixelScale: initialOverlayScale,
         showHeatmap: false,
         heatCount: 0,
@@ -1631,6 +1633,7 @@ templateForm.addEventListener('submit', async (e) => {
         autoBuyNeededColors: !!autoBuyNeededColors?.checked && !!(usePaidColors?.checked),
         antiGriefMode: antiGriefMode.checked,
         paintTransparentPixels: !!paintTransparent.checked,
+        skipPaintedPixels: !!skipPaintedPixels
         heatmapEnabled: !!(heatmapEnabled && heatmapEnabled.checked),
         heatmapLimit: Math.max(1, Math.floor(Number(heatmapLimit && heatmapLimit.value ? heatmapLimit.value : 10000)))
     };
@@ -2682,6 +2685,7 @@ openManageTemplates.addEventListener("click", () => {
                 if (t.canBuyMaxCharges) enabled.push('Buy max charges');
                 if (t.autoBuyNeededColors) enabled.push('Buy premium colors');
                 if (t.paintTransparentPixels) enabled.push('Paint transparent pixels');
+                if (t.skipPaintedPixels) enabled.push('Skip painted pixels')
                 if (t.antiGriefMode) enabled.push('Anti‑grief mode');
                 const enabledLine = enabled.length ? `<div><span class="t-templates-enabled">Enabled:</span> ${enabled.join(', ')}</div>` : '';
 
@@ -2787,6 +2791,7 @@ openManageTemplates.addEventListener("click", () => {
                     if (autoBuyNeededColors) autoBuyNeededColors.checked = !!T.autoBuyNeededColors;
                     antiGriefMode.checked = T.antiGriefMode;
                     paintTransparent.checked = !!T.paintTransparentPixels;
+                    skipPaintedPixels.checked = !!t.skipPaintedPixels;
                     if (typeof T.heatmapEnabled !== 'undefined' && heatmapEnabled) heatmapEnabled.checked = !!T.heatmapEnabled;
                     if (heatmapLimitWrap) heatmapLimitWrap.style.display = heatmapEnabled && heatmapEnabled.checked ? '' : 'none';
                     if (typeof T.heatmapLimit !== 'undefined' && heatmapLimit) heatmapLimit.value = Math.max(1, Number(T.heatmapLimit || 10000));
@@ -3270,6 +3275,7 @@ async function refreshActiveBar() {
                 canBuyMaxCharges.checked = T.canBuyMaxCharges;
                 antiGriefMode.checked = T.antiGriefMode;
                 paintTransparent.checked = !!T.paintTransparentPixels;
+                skipPaintedPixels.checked = !!t.skipPaintedPixels;
                 if (typeof T.heatmapEnabled !== 'undefined' && heatmapEnabled) heatmapEnabled.checked = !!T.heatmapEnabled;
                 if (heatmapLimitWrap) heatmapLimitWrap.style.display = heatmapEnabled && heatmapEnabled.checked ? '' : 'none';
                 if (typeof T.heatmapLimit !== 'undefined' && heatmapLimit) heatmapLimit.value = Math.max(1, Number(T.heatmapLimit || 10000));
