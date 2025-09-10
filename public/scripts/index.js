@@ -42,6 +42,9 @@ const autoBuyNeededColors = $("autoBuyNeededColors");
 const antiGriefMode = $("antiGriefMode");
 const paintTransparent = $("paintTransparent");
 const skipPaintedPixels = $("skipPaintedPixels");
+const heatmapEnabled = $("heatmapEnabled");
+const heatmapLimit = $("heatmapLimit");
+const heatmapLimitWrap = $("heatmapLimitWrap");
 const submitTemplate = $("submitTemplate");
 const manageTemplates = $("manageTemplates");
 const templateList = $("templateList");
@@ -77,6 +80,7 @@ const showLatestInfo = $("showLatestInfo");
 const buyMaxUpgradesAll = $("buyMaxUpgradesAll");
 
 let pendingUserSelection = null;
+let editSelectedUserIds = null; // Set of selected user ids while editing template
 
 const LAST_STATUS_KEY = 'wplacer_latest_user_status';
 const LAST_TOTALS_KEY = 'wplacer_latest_totals_v1';
@@ -531,7 +535,7 @@ function ensureMtPreviewOverlay() {
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
     overlay.style.cssText = `
-        position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 9999;
+        position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 999;
         display: none; align-items: center; justify-content: center; padding: 24px;
     `;
 
@@ -545,7 +549,7 @@ function ensureMtPreviewOverlay() {
 
     const boxcontainer = document.createElement('div');
     boxcontainer.id = 'mtPreviewBoxContainer';
-    boxcontainer.style.cssText = `display:flex; flex-direction:column; gap:8px; overflow: auto; max-height: 90vh;`;
+    boxcontainer.style.cssText = `display:flex; flex-direction:column; gap:4px; overflow: auto; max-height: 90vh;`;
 
     const head = document.createElement('div');
     head.style.cssText = `display:flex; align-items:center; justify-content:space-between; gap:8px;`;
@@ -565,6 +569,20 @@ function ensureMtPreviewOverlay() {
 
     head.append(title, close);
 
+    // Inline style for pressed/disabled controls (scoped to overlay)
+    let inlineStyle = document.getElementById('mtPreviewInlineStyle');
+    if (!inlineStyle) {
+        inlineStyle = document.createElement('style');
+        inlineStyle.id = 'mtPreviewInlineStyle';
+        inlineStyle.textContent = `
+            #mtPreviewOverlay .mt-ctrl-group button.pressed { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--ring);background: var(--accent) !important; }
+            #mtPreviewOverlay .mt-ctrl-group.disabled { opacity: .5; }
+            #mtPreviewOverlay .mt-ctrl-group.disabled * { pointer-events: none; }
+            #mtPreviewOverlay .mt-ctrl-group button img { width: 14px; height: 14px; display:inline-block; }
+        `;
+        document.head.appendChild(inlineStyle);
+    }
+
     const canvas = document.createElement('canvas');
     canvas.id = 'mtPreviewCanvas';
     canvas.style.cssText = `
@@ -574,48 +592,125 @@ function ensureMtPreviewOverlay() {
 
     const bottomControls = document.createElement('div');
     bottomControls.id = 'mtPreviewControls';
-    bottomControls.style.cssText = `display:flex; align-items:center; gap:8px;`;
+    bottomControls.style.cssText = `display:flex; align-items:center; gap:3px; flex-wrap: wrap;max-width: 680px;`;
 
     const btnOverlay = document.createElement('button');
     btnOverlay.id = 'mtToggleOverlay';
     btnOverlay.type = 'button';
-    btnOverlay.textContent = 'Hide template overlay';
+    btnOverlay.innerHTML = '<img src="icons/overlay.svg" alt=""/>Overlay';
     btnOverlay.style.cssText = `
-        background: var(--bg-2); border:1px solid var(--border); color:#ddd; padding:6px 10px; border-radius:6px; cursor:pointer;
+        background: var(--bg-2); border:1px solid var(--border); color:#ddd; padding:4px 8px; border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:6px; font-size:12px;
     `;
 
     const btnMismatch = document.createElement('button');
     btnMismatch.id = 'mtToggleMismatch';
     btnMismatch.type = 'button';
-    btnMismatch.textContent = 'Highlight mismatches';
+    btnMismatch.innerHTML = '<img src="icons/eye.svg" alt=""/>Mismatch';
     btnMismatch.style.cssText = `
-        background: var(--bg-2); border:1px solid var(--border); color:#ddd; padding:6px 10px; border-radius:6px; cursor:pointer;
+        background: var(--bg-2); border:1px solid var(--border); color:#ddd; padding:4px 8px; border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:6px; font-size:12px;
     `;
 
+    
+
+    const btnRefresh = document.createElement('button');
+    btnRefresh.id = 'mtRefreshCanvas';
+    btnRefresh.type = 'button';
+    btnRefresh.innerHTML = '<img src="icons/restart.svg" alt=""/>Refresh';
+    btnRefresh.style.cssText = `
+        background: var(--bg-2); border:1px solid var(--border); color:#ddd; padding:4px 8px; border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:6px; font-size:12px;
+    `;
+
+    
+
+    const overlayScaleWrap = document.createElement('div');
+    overlayScaleWrap.style.cssText = 'display:flex; align-items:center; gap:6px; color:#ddd; font-size:12px;';
+    const overlayScaleLabel = document.createElement('label');
+    overlayScaleLabel.setAttribute('for', 'mtOverlayPixelScale');
+    overlayScaleLabel.style.cssText = 'margin:0px;';
+    const overlayScalePercent = Math.max(50, Math.min(100, parseInt(localStorage.getItem('wplacer_overlay_pixel_scale') || '100', 10) || 100));
+    const overlayScaleLabelText = document.createElement('span');
+    overlayScaleLabelText.id = 'mtOverlayPixelScaleLabel';
+    overlayScaleLabelText.textContent = `${overlayScalePercent}%`;
+    overlayScaleLabel.textContent = '';
+    const overlayScaleInput = document.createElement('input');
+    overlayScaleInput.type = 'range';
+    overlayScaleInput.id = 'mtOverlayPixelScale';
+    overlayScaleInput.min = '50';
+    overlayScaleInput.max = '100';
+    overlayScaleInput.step = '5';
+    overlayScaleInput.value = String(overlayScalePercent);
+    overlayScaleWrap.append(overlayScaleLabel, overlayScaleInput, overlayScaleLabelText);
+
+    // Heatmap controls
     const btnHeatmap = document.createElement('button');
     btnHeatmap.id = 'mtToggleHeatmap';
     btnHeatmap.type = 'button';
-    btnHeatmap.textContent = 'Show heatmap';
+    btnHeatmap.innerHTML = '<img src="icons/heat-map.svg" alt=""/>Heatmap';
     btnHeatmap.style.cssText = `
-        background: var(--bg-2); border:1px solid var(--border); color:#ddd; padding:6px 10px; border-radius:6px; cursor:pointer;
+        background: var(--bg-2); border:1px solid var(--border); color:#ddd; padding:4px 8px; border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:6px; font-size:12px;
     `;
 
-    const heatmapLimitWrap = document.createElement('div');
-    heatmapLimitWrap.style.cssText = 'display:flex; align-items:center; gap:6px; color:#ddd; font-size:12px;';
-    const heatmapLimitLabel = document.createElement('label');
-    heatmapLimitLabel.setAttribute('for', 'mtHeatmapLimit');
-    heatmapLimitLabel.style.cssText = 'margin:0px;';
-    heatmapLimitLabel.textContent = 'Last X:';
-    const heatmapLimitInput = document.createElement('input');
-    heatmapLimitInput.type = 'number';
-    heatmapLimitInput.id = 'mtHeatmapLimit';
-    heatmapLimitInput.min = '1';
-    heatmapLimitInput.max = '20000';
-    heatmapLimitInput.value = String(parseInt(localStorage.getItem('wplacer_heatmap_limit') || '3000', 10));
-    heatmapLimitInput.style.cssText = 'width:88px; background: var(--bg-2); color:#ddd; border:1px solid var(--border); border-radius:6px; padding:4px 6px;';
-    heatmapLimitWrap.append(heatmapLimitLabel, heatmapLimitInput);
+    const heatWrap = document.createElement('div');
+    heatWrap.id = 'mtHeatWrap';
+    heatWrap.style.cssText = 'display:flex; align-items:center; gap:6px; color:#ddd; font-size:12px; min-width:180px;';
+    const heatLabelEl = document.createElement('label');
+    heatLabelEl.setAttribute('for', 'mtHeatSlider');
+    heatLabelEl.style.cssText = 'margin:0px;';
+    heatLabelEl.textContent = '';
+    const heatSlider = document.createElement('input');
+    heatSlider.type = 'range';
+    heatSlider.id = 'mtHeatSlider';
+    heatSlider.min = '0';
+    heatSlider.max = '0';
+    heatSlider.step = '1';
+    heatSlider.value = '0';
+    const heatLabel = document.createElement('span');
+    heatLabel.id = 'mtHeatLabel';
+    heatLabel.textContent = '0';
+    heatWrap.append(heatLabelEl, heatSlider, heatLabel);
 
-    bottomControls.append(btnOverlay, btnMismatch, btnHeatmap, heatmapLimitWrap);
+    const btnClearHeat = document.createElement('button');
+    btnClearHeat.id = 'mtClearHeatmap';
+    btnClearHeat.type = 'button';
+    btnClearHeat.innerHTML = '<img src="icons/remove.svg" alt=""/>';
+    btnClearHeat.style.cssText = `
+        background: var(--bg-2); border:1px solid var(--border); color:#f66; padding:4px 8px; border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:6px; font-size:12px;
+    `;
+
+    // Build compact grouped controls
+    const groupStyle = 'display:flex; align-items:center; gap:4px; padding:4px 6px; background: var(--bg-1); border:1px solid var(--border); border-radius:6px;';
+    const groupStyleTop = 'display:flex; align-items:center; gap:2px; border-radius:6px;';
+    const overlayGroup = document.createElement('div');
+    overlayGroup.className = 'mt-ctrl-group overlay';
+    overlayGroup.style.cssText = groupStyle;
+    // tighten overlay pixel label
+    try { overlayScaleWrap.querySelector('label')?.appendChild(document.createTextNode('')); } catch(_) {}
+    overlayGroup.append(btnOverlay, overlayScaleWrap);
+
+    const heatGroup = document.createElement('div');
+    heatGroup.className = 'mt-ctrl-group heatmap';
+    heatGroup.style.cssText = groupStyle;
+    heatGroup.append(btnHeatmap, heatWrap, btnClearHeat);
+
+    const mismatchGroup = document.createElement('div');
+    mismatchGroup.className = 'mt-ctrl-group mismatch';
+    mismatchGroup.style.cssText = groupStyleTop;
+    mismatchGroup.append(btnMismatch);
+
+    const refreshGroup = document.createElement('div');
+    refreshGroup.className = 'mt-ctrl-group refresh';
+    refreshGroup.style.cssText = groupStyleTop;
+    refreshGroup.append(btnRefresh);
+
+    // Top controls (above canvas)
+    const topControls = document.createElement('div');
+    topControls.id = 'mtPreviewTopControls';
+    topControls.style.cssText = 'display:flex; align-items:center; gap:4px; flex-wrap: wrap;';
+    topControls.append(mismatchGroup, refreshGroup);
+
+    // Apply a slightly tighter layout
+    bottomControls.style.gap = '4px';
+    bottomControls.append(overlayGroup, heatGroup);
 
     const stats = document.createElement('div');
     stats.id = 'mtPreviewStats';
@@ -626,6 +721,7 @@ function ensureMtPreviewOverlay() {
     palWrap.id = 'mtPreviewPaletteWrap';
     palWrap.style.cssText = 'margin-top:6px;';
     const palTitle = document.createElement('div');
+    palTitle.id = 'mtPreviewPaletteTitle';
     palTitle.textContent = 'Remaining colors';
     palTitle.style.cssText = 'color:#ddd; font-size:12px; margin-bottom:4px;';
     const palGrid = document.createElement('div');
@@ -637,7 +733,7 @@ function ensureMtPreviewOverlay() {
     hint.style.cssText = 'color:#bbb; font-size:12px;';
     hint.textContent = 'Mouse wheel — zoom. Left mouse drag — pan. Esc — close.';
 
-    boxcontainer.append(canvas, bottomControls, stats, palWrap);
+    boxcontainer.append(topControls, canvas, bottomControls, stats, palWrap);
     box.append(head, boxcontainer, hint);
     overlay.append(box);
     document.body.append(overlay);
@@ -657,8 +753,14 @@ async function showManageTemplatePreview(t) {
     const statsEl = document.getElementById('mtPreviewStats');
     const btnOverlay = document.getElementById('mtToggleOverlay');
     const btnMismatch = document.getElementById('mtToggleMismatch');
+    const btnRefresh = document.getElementById('mtRefreshCanvas');
+    const btnClearHeat = document.getElementById('mtClearHeatmap');
+    const overlayScaleInput = document.getElementById('mtOverlayPixelScale');
+    const overlayScaleLabelText = document.getElementById('mtOverlayPixelScaleLabel');
+    const palTitleEl = document.getElementById('mtPreviewPaletteTitle');
     const btnHeatmap = document.getElementById('mtToggleHeatmap');
-    const heatmapLimitInput = document.getElementById('mtHeatmapLimit');
+    const heatSlider = document.getElementById('mtHeatSlider');
+    const heatLabel = document.getElementById('mtHeatLabel');
     titleEl.textContent = `Preview: ${t.name}`;
 
     const RID = ++MT_PREVIEW_RENDER_ID;
@@ -691,7 +793,9 @@ async function showManageTemplatePreview(t) {
     bctx.imageSmoothingEnabled = false;
     bctx.clearRect(0, 0, displayWidth, displayHeight);
 
-    try {
+    async function loadTilesIntoBuffer() {
+        // clear before refill
+        bctx.clearRect(0, 0, displayWidth, displayHeight);
         for (let txi = startTileX; txi <= endTileX; txi++) {
             for (let tyi = startTileY; tyi <= endTileY; tyi++) {
 
@@ -725,14 +829,11 @@ async function showManageTemplatePreview(t) {
             }
         }
         await processInParallel(tileTasks, concurrency);
-        if (RID !== MT_PREVIEW_RENDER_ID) return;
-    } catch (error) {
-        handleError(error);
-        return;
     }
+    try { await loadTilesIntoBuffer(); if (RID !== MT_PREVIEW_RENDER_ID) return; } catch (error) { handleError(error); return; }
 
     const SCALE = 4;
-    const src = bctx.getImageData(0, 0, displayWidth, displayHeight).data;
+    let src = bctx.getImageData(0, 0, displayWidth, displayHeight).data;
 
     const rgbOfId = (id) => {
         const s = colorById(id);
@@ -776,6 +877,9 @@ async function showManageTemplatePreview(t) {
         if (grid) {
             grid.innerHTML = '';
             const entries = Array.from(left.entries()).sort((a, b) => (b[1] - a[1]) || (a[0] - b[0]));
+            let totalLeft = 0;
+            for (const [, cnt] of entries) totalLeft += cnt;
+            if (palTitleEl) palTitleEl.textContent = `Remaining colors (${totalLeft})`;
             for (const [cid, cnt] of entries) {
                 const rgbKey = Object.keys(colors).find(k => colors[k] === cid);
                 const [r, g, b] = (rgbKey || '0,0,0').split(',').map(n => parseInt(n, 10) || 0);
@@ -792,6 +896,7 @@ async function showManageTemplatePreview(t) {
                 grid.appendChild(cell);
             }
             if (entries.length === 0) {
+                if (palTitleEl) palTitleEl.textContent = 'Remaining colors (0)';
                 const none = document.createElement('div');
                 none.style.cssText = 'color:#aaa; font-size:12px;';
                 none.textContent = 'No remaining pixels.';
@@ -825,6 +930,7 @@ async function showManageTemplatePreview(t) {
 
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
+    const initialOverlayScale = Math.max(0.5, Math.min(1, ((parseInt((overlayScaleInput && overlayScaleInput.value) || '100', 10) || 100) / 100)));
     const STATE = {
         w: displayWidth,
         h: displayHeight,
@@ -845,12 +951,15 @@ async function showManageTemplatePreview(t) {
         highlightMismatch: false,
         paintTransparent: !!t.paintTransparentPixels,
         skipPaintedPixels: !!t.skipPaintedPixels,
+        overlayPixelScale: initialOverlayScale,
         showHeatmap: false,
-        heatmapEntries: null
+        heatCount: 0,
+        heatMax: 0,
+        heatData: []
     };
 
     function drawOverlayMiniFit() {
-        const MINI = Math.max(2, Math.floor(STATE.SCALE / 2));
+        const MINI = Math.max(1, Math.floor(STATE.SCALE * STATE.overlayPixelScale));
         const OFF = Math.floor((STATE.SCALE - MINI) / 2);
         for (let y = 0; y < STATE.h; y++) {
             for (let x = 0; x < STATE.w; x++) {
@@ -879,8 +988,8 @@ async function showManageTemplatePreview(t) {
     }
 
     function drawOverlayMiniZoom(sx, sy, vw, vh, cellW, cellH) {
-        const miniW = Math.max(1, Math.floor(cellW / 2));
-        const miniH = Math.max(1, Math.floor(cellH / 2));
+        const miniW = Math.max(1, Math.floor(cellW * STATE.overlayPixelScale));
+        const miniH = Math.max(1, Math.floor(cellH * STATE.overlayPixelScale));
         const offX = Math.floor((cellW - miniW) / 2);
         const offY = Math.floor((cellH - miniH) / 2);
         for (let y = sy; y < sy + vh; y++) {
@@ -952,60 +1061,14 @@ async function showManageTemplatePreview(t) {
         }
     }
 
-    function drawHeatmapFit() {
-        if (!STATE.showHeatmap || !Array.isArray(STATE.heatmapEntries)) return;
-        pctx.save();
-        pctx.globalCompositeOperation = 'source-over';
-        const entries = STATE.heatmapEntries;
-        const n = entries.length;
-        for (let i = 0; i < n; i++) {
-            const e = entries[i];
-            const w = n > 1 ? (i / (n - 1)) : 1;
-            const a = Math.max(0, Math.min(1, 1 - w));
-            if (a <= 0) continue;
-            const dx = Math.floor(e.relX) * STATE.SCALE;
-            const dy = Math.floor(e.relY) * STATE.SCALE;
-            pctx.fillStyle = 'rgb(255,0,0)';
-            pctx.globalAlpha = a;
-            pctx.fillRect(dx, dy, STATE.SCALE, STATE.SCALE);
-        }
-        pctx.globalAlpha = 1;
-        pctx.restore();
-    }
-
-    function drawHeatmapZoom(sx, sy, vw, vh, cellW, cellH) {
-        if (!STATE.showHeatmap || !Array.isArray(STATE.heatmapEntries)) return;
-        pctx.save();
-        pctx.globalCompositeOperation = 'source-over';
-        const entries = STATE.heatmapEntries;
-        const n = entries.length;
-        for (let i = 0; i < n; i++) {
-            const e = entries[i];
-            const x = e.relX, y = e.relY;
-            if (x < sx || y < sy || x >= sx + vw || y >= sy + vh) continue;
-            const w = n > 1 ? (i / (n - 1)) : 1; // 0=oldest,1=newest
-            const a = Math.max(0, Math.min(1, 1 - w));
-            if (a <= 0) continue;
-            const cx = (x - sx) * cellW;
-            const cy = (y - sy) * cellH;
-            pctx.fillStyle = 'rgb(255,0,0)';
-            pctx.globalAlpha = a;
-            pctx.fillRect(Math.floor(cx), Math.floor(cy), Math.ceil(cellW), Math.ceil(cellH));
-        }
-        pctx.globalAlpha = 1;
-        pctx.restore();
-    }
+    
 
     function drawFit() {
         pctx.clearRect(0, 0, preview.width, preview.height);
-        if (STATE.showHeatmap) {
-            pctx.fillStyle = '#000';
-            pctx.fillRect(0, 0, preview.width, preview.height);
-            drawHeatmapFit();
-            return;
-        }
+        
         pctx.drawImage(STATE.buffer, 0, 0, STATE.w, STATE.h, 0, 0, preview.width, preview.height);
-        if (STATE.highlightMismatch) drawOverlayRedFit();
+        if (STATE.showHeatmap) drawHeatmapFit();
+        else if (STATE.highlightMismatch) drawOverlayRedFit();
         else if (STATE.showOverlay) drawOverlayMiniFit();
     }
 
@@ -1022,14 +1085,10 @@ async function showManageTemplatePreview(t) {
         const sy = Math.floor(STATE.viewY);
 
         pctx.clearRect(0, 0, preview.width, preview.height);
-        if (STATE.showHeatmap) {
-            pctx.fillStyle = '#000';
-            pctx.fillRect(0, 0, preview.width, preview.height);
-            drawHeatmapZoom(sx, sy, vw, vh, cellW, cellH);
-            return;
-        }
+        
         pctx.drawImage(STATE.buffer, sx, sy, vw, vh, 0, 0, preview.width, preview.height);
-        if (STATE.highlightMismatch) drawOverlayRedZoom(sx, sy, vw, vh, cellW, cellH);
+        if (STATE.showHeatmap) drawHeatmapZoom(sx, sy, vw, vh, cellW, cellH);
+        else if (STATE.highlightMismatch) drawOverlayRedZoom(sx, sy, vw, vh, cellW, cellH);
         else if (STATE.showOverlay) drawOverlayMiniZoom(sx, sy, vw, vh, cellW, cellH);
     }
 
@@ -1122,46 +1181,236 @@ async function showManageTemplatePreview(t) {
     }
 
     function updateButtons() {
-        btnOverlay.textContent = STATE.showOverlay ? 'Hide template overlay' : 'Show template overlay';
-        btnMismatch.textContent = STATE.highlightMismatch ? 'Hide mismatches highlight' : 'Highlight mismatches';
-        if (btnHeatmap) btnHeatmap.textContent = STATE.showHeatmap ? 'Hide heatmap' : 'Show heatmap';
+        // Update aria-pressed and pressed class
+        const setState = (el, on) => { if (!el) return; el.setAttribute('aria-pressed', on ? 'true' : 'false'); if (on) el.classList.add('pressed'); else el.classList.remove('pressed'); };
+        setState(btnOverlay, STATE.showOverlay);
+        setState(btnMismatch, STATE.highlightMismatch);
+        const btnHeatmap = document.getElementById('mtToggleHeatmap');
+        setState(btnHeatmap, STATE.showHeatmap);
     }
 
     btnOverlay.onclick = () => { STATE.showOverlay = !STATE.showOverlay; updateButtons(); render(); };
     btnMismatch.onclick = () => { STATE.highlightMismatch = !STATE.highlightMismatch; updateButtons(); render(); };
-    if (btnHeatmap) btnHeatmap.onclick = async () => {
-        STATE.showHeatmap = !STATE.showHeatmap;
-        if (STATE.showHeatmap && !STATE.heatmapEntries) {
-            try {
-                const limit = parseInt(localStorage.getItem('wplacer_heatmap_limit') || '3000', 10);
-                const { data } = await axios.get('/heatmap', { params: { id: t.name, limit } });
-                let arr = Array.isArray(data?.entries) ? data.entries : [];
-                arr.sort((a, b) => (Number(a?.ts || 0) - Number(b?.ts || 0)));
-                if (arr.length > limit) arr = arr.slice(arr.length - limit);
-                STATE.heatmapEntries = arr;
-            } catch (_) { STATE.heatmapEntries = []; }
-        }
-        try { preview.style.background = STATE.showHeatmap ? '#000' : '#f8f4f0'; } catch (_) { }
-        updateButtons();
+    if (btnHeatmap) btnHeatmap.onclick = () => { if (STATE.heatMax === 0) return; STATE.showHeatmap = !STATE.showHeatmap; updateButtons(); render(); };
+
+    if (overlayScaleInput) overlayScaleInput.addEventListener('input', () => {
+        let v = parseInt(overlayScaleInput.value, 10);
+        if (!Number.isFinite(v)) v = 100;
+        v = Math.max(50, Math.min(100, v));
+        overlayScaleInput.value = String(v);
+        if (overlayScaleLabelText) overlayScaleLabelText.textContent = `${v}%`;
+        localStorage.setItem('wplacer_overlay_pixel_scale', String(v));
+        STATE.overlayPixelScale = v / 100;
         render();
+    });
+
+    async function recalcStatsAndPalette() {
+        // matches
+        let totalTpl = 0, matched = 0;
+        for (let y = 0; y < displayHeight; y++) {
+            for (let x = 0; x < displayWidth; x++) {
+                const id = t.template?.data?.[x]?.[y] ?? 0;
+                if (id > 0) {
+                    totalTpl++;
+                    const tplRGB = rgbOfId(id);
+                    const i = (y * displayWidth + x) * 4;
+                    const br = src[i], bg = src[i + 1], bb = src[i + 2], ba = src[i + 3];
+                    if (tplRGB && ba === 255 && br === tplRGB[0] && bg === tplRGB[1] && bb === tplRGB[2]) matched++;
+                }
+            }
+        }
+        const pct = totalTpl ? (matched / totalTpl) * 100 : 0;
+        statsEl.textContent = `Matches: ${matched} / ${totalTpl} (${(Math.round(pct * 100) / 100).toFixed(2)}%)`;
+
+        // remaining palette
+        try {
+            const left = new Map();
+            for (let y = 0; y < displayHeight; y++) {
+                for (let x = 0; x < displayWidth; x++) {
+                    const id = t.template?.data?.[x]?.[y] ?? 0;
+                    if (id <= 0) continue;
+                    const i = (y * displayWidth + x) * 4;
+                    const br = src[i], bg = src[i + 1], bb = src[i + 2], ba = src[i + 3];
+                    const tplRGB = rgbOfId(id);
+                    if (!tplRGB) continue;
+                    const ok = (ba === 255 && br === tplRGB[0] && bg === tplRGB[1] && bb === tplRGB[2]);
+                    if (!ok) left.set(id, (left.get(id) || 0) + 1);
+                }
+            }
+            const grid = document.getElementById('mtPreviewPaletteGrid');
+            if (grid) {
+                grid.innerHTML = '';
+                const entries = Array.from(left.entries()).sort((a, b) => (b[1] - a[1]) || (a[0] - b[0]));
+                let totalLeft = 0;
+                for (const [cid, cnt] of entries) totalLeft += cnt;
+                if (palTitleEl) palTitleEl.textContent = `Remaining colors (${totalLeft})`;
+                for (const [cid, cnt] of entries) {
+                    const rgbKey = Object.keys(colors).find(k => colors[k] === cid);
+                    const [r, g, b] = (rgbKey || '0,0,0').split(',').map(n => parseInt(n, 10) || 0);
+                    const textColor = getContrastColor(r, g, b);
+                    const cell = document.createElement('div');
+                    cell.style.cssText = 'display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px; border:1px solid var(--border); border-radius:6px; background: var(--bg-2)';
+                    const sw = document.createElement('div');
+                    sw.style.cssText = `width:28px; height:20px; border-radius:4px; background: rgb(${r},${g},${b}); color:${textColor}; display:flex; align-items:center; justify-content:center; font-size:11px;`;
+                    sw.textContent = `#${cid}`;
+                    const label = document.createElement('div');
+                    label.style.cssText = 'font-size:11px; color:#ddd;';
+                    label.textContent = String(cnt);
+                    cell.append(sw, label);
+                    grid.appendChild(cell);
+                }
+                if (entries.length === 0) {
+                    if (palTitleEl) palTitleEl.textContent = 'Remaining colors (0)';
+                    const none = document.createElement('div');
+                    none.style.cssText = 'color:#aaa; font-size:12px;';
+                    none.textContent = 'No remaining pixels.';
+                    grid.appendChild(none);
+                }
+            }
+        } catch (_) { }
+    }
+
+    // --- Heatmap logic ---
+    async function loadHeatData(templateId) {
+        try {
+            const url = `/data/heat_maps/${templateId}.jsonl`;
+            const resp = await fetch(url, { cache: 'no-store' });
+            if (!resp.ok) return [];
+            const text = await resp.text();
+            const lines = text.split(/\r?\n/).filter(Boolean);
+            // Latest entries are at the end of file because we append
+            const arr = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+            return arr;
+        } catch { return []; }
+    }
+
+    function drawHeatmapFit() {
+        // dark background
+        pctx.fillStyle = 'black';
+        pctx.fillRect(0, 0, preview.width, preview.height);
+        const MINI = STATE.SCALE; // draw full cells
+        const count = Math.max(0, Math.min(STATE.heatCount, STATE.heatData.length));
+        if (count === 0) return;
+        // take last N entries
+        const start = STATE.heatData.length - count;
+        const used = STATE.heatData.slice(start);
+        for (let i = 0; i < used.length; i++) {
+            const rec = used[i];
+            const x = (rec['Px X']|0), y = (rec['Px Y']|0);
+            const ageIdx = used.length - 1 - i; // 0 = newest, grow older
+            const alpha = 1.0 - (ageIdx / Math.max(1, used.length - 1)) * 0.9; // 1.0 .. 0.1
+            pctx.fillStyle = `rgba(255,0,0,${alpha.toFixed(3)})`;
+            pctx.fillRect(x * MINI, y * MINI, MINI, MINI);
+        }
+    }
+
+    function drawHeatmapZoom(sx, sy, vw, vh, cellW, cellH) {
+        // dark background
+        pctx.fillStyle = 'black';
+        pctx.fillRect(0, 0, preview.width, preview.height);
+        const count = Math.max(0, Math.min(STATE.heatCount, STATE.heatData.length));
+        if (count === 0) return;
+        const start = STATE.heatData.length - count;
+        const used = STATE.heatData.slice(start);
+        for (let i = 0; i < used.length; i++) {
+            const rec = used[i];
+            const x = (rec['Px X']|0), y = (rec['Px Y']|0);
+            if (x < sx || y < sy || x >= sx + vw || y >= sy + vh) continue;
+            const ageIdx = used.length - 1 - i;
+            const alpha = 1.0 - (ageIdx / Math.max(1, used.length - 1)) * 0.9; // 1.0 .. 0.1
+            const cx = (x - sx) * cellW;
+            const cy = (y - sy) * cellH;
+            pctx.fillStyle = `rgba(255,0,0,${alpha.toFixed(3)})`;
+            pctx.fillRect(Math.floor(cx), Math.floor(cy), Math.ceil(cellW), Math.ceil(cellH));
+        }
+    }
+
+    // expose heat reload
+    async function reloadHeat() {
+        try {
+            const id = String(t.id || t._id || t.__id || '');
+            let templateId = id;
+            if (!templateId) {
+                // Try to find id from list API if not present in object
+                try {
+                    const { data } = await axios.get('/templates');
+                    const entry = Object.entries(data || {}).find(([k, v]) => v && v.name === t.name && JSON.stringify(v.coords) === JSON.stringify(t.coords));
+                    if (entry) templateId = entry[0];
+                } catch (_) { }
+            }
+            if (!templateId) return;
+            const data = await loadHeatData(templateId);
+            STATE.heatData = data;
+            STATE.heatMax = data.length;
+            STATE.heatCount = data.length;
+            const slider = document.getElementById('mtHeatSlider');
+            const label = document.getElementById('mtHeatLabel');
+            const heatGroupEl = document.querySelector('.mt-ctrl-group.heatmap');
+            if (heatGroupEl) {
+                if (STATE.heatMax === 0) heatGroupEl.classList.add('disabled'); else heatGroupEl.classList.remove('disabled');
+            }
+            if (slider) {
+                slider.max = String(STATE.heatMax);
+                slider.value = String(STATE.heatCount);
+                if (label) label.textContent = String(STATE.heatCount);
+                slider.oninput = () => {
+                    let v = parseInt(slider.value, 10);
+                    if (!Number.isFinite(v)) v = 0;
+                    v = Math.max(0, Math.min(STATE.heatMax, v));
+                    slider.value = String(v);
+                    STATE.heatCount = v;
+                    if (label) label.textContent = String(v);
+                    render();
+                };
+            }
+        } catch (_) { }
+    }
+    // Init heat controls
+    await reloadHeat();
+
+    async function refreshCanvas() {
+        if (btnRefresh) { btnRefresh.disabled = true; btnRefresh.textContent = 'Refreshing...'; }
+        try {
+            await loadTilesIntoBuffer();
+            src = bctx.getImageData(0, 0, displayWidth, displayHeight).data;
+            STATE.src = src;
+            STATE.buffer = buffer;
+            await recalcStatsAndPalette();
+            await reloadHeat();
+            render();
+        } catch (e) {
+            handleError(e);
+        } finally {
+            if (btnRefresh) { btnRefresh.disabled = false; btnRefresh.textContent = 'Refresh canvas'; }
+        }
+    }
+
+    if (btnRefresh) btnRefresh.onclick = () => { refreshCanvas(); };
+
+    if (btnClearHeat) btnClearHeat.onclick = async () => {
+        try {
+            const id = String(t.id || t._id || t.__id || '');
+            let templateId = id;
+            if (!templateId) {
+                try {
+                    const { data } = await axios.get('/templates');
+                    const entry = Object.entries(data || {}).find(([k, v]) => v && v.name === t.name && JSON.stringify(v.coords) === JSON.stringify(t.coords));
+                    if (entry) templateId = entry[0];
+                } catch (_) { }
+            }
+            if (!templateId) return;
+            showConfirmation('Clear heatmap', 'Are you sure you want to clear painting history for this template?', async () => {
+                try {
+                    await axios.delete(`/template/${templateId}/heatmap`);
+                    await reloadHeat();
+                    render();
+                    showMessage('Heatmap', 'Painting history cleared.');
+                } catch (e) { handleError(e); }
+            });
+        } catch (e) { handleError(e); }
     };
 
-    if (heatmapLimitInput) heatmapLimitInput.addEventListener('change', async () => {
-        let v = parseInt(heatmapLimitInput.value, 10);
-        if (!Number.isFinite(v) || v < 1) v = 1; if (v > 20000) v = 20000;
-        heatmapLimitInput.value = String(v);
-        localStorage.setItem('wplacer_heatmap_limit', String(v));
-        if (STATE.showHeatmap) {
-            try {
-                const { data } = await axios.get('/heatmap', { params: { id: t.name, limit: v } });
-                let arr = Array.isArray(data?.entries) ? data.entries : [];
-                arr.sort((a, b) => (Number(a?.ts || 0) - Number(b?.ts || 0)));
-                if (arr.length > v) arr = arr.slice(arr.length - v);
-                STATE.heatmapEntries = arr;
-            } catch (_) { STATE.heatmapEntries = []; }
-            render();
-        }
-    });
+    
 
     updateButtons();
     render();
@@ -1339,6 +1588,13 @@ if (typeof usePaidColors !== 'undefined' && usePaidColors) {
     });
 }
 
+// Toggle heatmap limit visibility
+if (heatmapEnabled && heatmapLimitWrap) {
+    heatmapEnabled.addEventListener('change', () => {
+        heatmapLimitWrap.style.display = heatmapEnabled.checked ? '' : 'none';
+    });
+}
+
 const resetTemplateForm = () => {
     killPreviewPipelines()
     templateForm.reset();
@@ -1350,6 +1606,7 @@ const resetTemplateForm = () => {
     previewCanvas.style.display = "none";
     editTmpltMsg.style.display = "none";
     currentTemplate = { width: 0, height: 0, data: [] };
+    if (heatmapLimitWrap) heatmapLimitWrap.style.display = 'none';
 };
 
 templateForm.addEventListener('submit', async (e) => {
@@ -1376,7 +1633,9 @@ templateForm.addEventListener('submit', async (e) => {
         autoBuyNeededColors: !!autoBuyNeededColors?.checked && !!(usePaidColors?.checked),
         antiGriefMode: antiGriefMode.checked,
         paintTransparentPixels: !!paintTransparent.checked,
-        skipPaintedPixels: !!skipPaintedPixels
+        skipPaintedPixels: !!skipPaintedPixels.checked,
+        heatmapEnabled: !!(heatmapEnabled && heatmapEnabled.checked),
+        heatmapLimit: Math.max(1, Math.floor(Number(heatmapLimit && heatmapLimit.value ? heatmapLimit.value : 10000)))
     };
 
     if (currentTemplate && currentTemplate.width > 0) {
@@ -1784,8 +2043,13 @@ checkUserStatus.addEventListener("click", async () => {
         window.__skipAccountCheckCooldownWarningCounter = __bypass - 1;
     }
     checkUserStatus.disabled = true;
-    checkUserStatus.innerHTML = "Checking...";
     const userElements = Array.from(document.querySelectorAll('.user'));
+    const totalUsersToCheck = userElements.length;
+    let checkedUsersCount = 0;
+    const updateCheckBtn = () => {
+        checkUserStatus.innerHTML = `Checking... ${checkedUsersCount}/${totalUsersToCheck}`;
+    };
+    updateCheckBtn();
 
     let totalCurrent = 0;
     let totalMax = 0;
@@ -1866,6 +2130,8 @@ checkUserStatus.addEventListener("click", async () => {
         if (settingsAccountCheckCooldown > 0) {
             await sleep(settingsAccountCheckCooldown);
         }
+        checkedUsersCount++;
+        updateCheckBtn();
     };
 
     if (settingsAccountCheckCooldown > 0) {
@@ -2160,7 +2426,8 @@ openAddTemplate.addEventListener("click", () => {
             checkbox.id = `user_${e.id}`;
             checkbox.name = 'user_checkbox';
             checkbox.value = e.id;
-            if (Array.isArray(pendingUserSelection) && pendingUserSelection.includes(String(e.id))) checkbox.checked = true;
+            const keep = (editSelectedUserIds && editSelectedUserIds.has(String(e.id))) || (Array.isArray(pendingUserSelection) && pendingUserSelection.includes(String(e.id)));
+            if (keep) checkbox.checked = true;
 
             const label = document.createElement('label');
             label.className = 'label-margin0';
@@ -2179,6 +2446,11 @@ openAddTemplate.addEventListener("click", () => {
     const applySort = (usersObj) => {
         const sel = document.getElementById('userSortMode');
         const mode = sel ? sel.value : 'priority';
+        // Capture current checked before rerender (persist selection across sort)
+        try {
+            const checked = Array.from(document.querySelectorAll('#userSelectList input[name="user_checkbox"]:checked')).map(cb => String(cb.value));
+            editSelectedUserIds = new Set(checked);
+        } catch { editSelectedUserIds = editSelectedUserIds || null; }
         renderList(usersObj, mode);
     };
 
@@ -2215,9 +2487,11 @@ openAddTemplate.addEventListener("click", () => {
 });
 selectAllUsers.addEventListener('click', () => {
     document.querySelectorAll('#userSelectList input[type="checkbox"]').forEach(cb => cb.checked = true);
+    try { editSelectedUserIds = new Set(Array.from(document.querySelectorAll('#userSelectList input[name="user_checkbox"]:checked')).map(cb => String(cb.value))); } catch {}
 });
 document.getElementById('unselectAllUsers')?.addEventListener('click', () => {
     document.querySelectorAll('#userSelectList input[type="checkbox"]').forEach(cb => cb.checked = false);
+    editSelectedUserIds = new Set();
 });
 
 document.getElementById("HideSensInfo").addEventListener("click", function () {
@@ -2411,7 +2685,7 @@ openManageTemplates.addEventListener("click", () => {
                 if (t.canBuyMaxCharges) enabled.push('Buy max charges');
                 if (t.autoBuyNeededColors) enabled.push('Buy premium colors');
                 if (t.paintTransparentPixels) enabled.push('Paint transparent pixels');
-                if (t.skipPaintedPixels) enabled.push('Skip painted pixels')
+                if (t.skipPaintedPixels) enabled.push('Skip painted pixels');
                 if (t.antiGriefMode) enabled.push('Anti‑grief mode');
                 const enabledLine = enabled.length ? `<div><span class="t-templates-enabled">Enabled:</span> ${enabled.join(', ')}</div>` : '';
 
@@ -2496,22 +2770,31 @@ openManageTemplates.addEventListener("click", () => {
                 const editButton = document.createElement('button');
                 editButton.className = 'secondary-button button-templates';
                 editButton.innerHTML = '<img src="icons/settings.svg">Edit';
-                editButton.addEventListener('click', () => {
-                    pendingUserSelection = Array.isArray(t.userIds) ? t.userIds.map(String) : [];
+                editButton.addEventListener('click', async () => {
+                    let T = t;
+                    try {
+                        const { data } = await axios.get(`/template/${id}`);
+                        if (data) T = data;
+                    } catch (_) { }
+
+                    pendingUserSelection = Array.isArray(T.userIds) ? T.userIds.map(String) : [];
 
                     openAddTemplate.click();
-                    templateFormTitle.textContent = `Edit Template: ${t.name}`;
+                    templateFormTitle.textContent = `Edit Template: ${T.name}`;
                     submitTemplate.innerHTML = '<img src="icons/edit.svg">Save Changes';
                     templateForm.dataset.editId = id;
 
-                    templateName.value = t.name;
-                    [tx.value, ty.value, px.value, py.value] = t.coords;
-                    canBuyCharges.checked = t.canBuyCharges;
-                    canBuyMaxCharges.checked = t.canBuyMaxCharges;
-                    if (autoBuyNeededColors) autoBuyNeededColors.checked = !!t.autoBuyNeededColors;
-                    antiGriefMode.checked = t.antiGriefMode;
-                    paintTransparent.checked = !!t.paintTransparentPixels;
-                    skipPaintedPixels.checked = !!t.skipPaintedPixels;
+                    templateName.value = T.name;
+                    [tx.value, ty.value, px.value, py.value] = T.coords;
+                    canBuyCharges.checked = T.canBuyCharges;
+                    canBuyMaxCharges.checked = T.canBuyMaxCharges;
+                    if (autoBuyNeededColors) autoBuyNeededColors.checked = !!T.autoBuyNeededColors;
+                    antiGriefMode.checked = T.antiGriefMode;
+                    paintTransparent.checked = !!T.paintTransparentPixels;
+                    skipPaintedPixels.checked = !!T.skipPaintedPixels;
+                    if (typeof T.heatmapEnabled !== 'undefined' && heatmapEnabled) heatmapEnabled.checked = !!T.heatmapEnabled;
+                    if (heatmapLimitWrap) heatmapLimitWrap.style.display = heatmapEnabled && heatmapEnabled.checked ? '' : 'none';
+                    if (typeof T.heatmapLimit !== 'undefined' && heatmapLimit) heatmapLimit.value = Math.max(1, Number(T.heatmapLimit || 10000));
 
 
                     if (autoBuyNeededColors?.checked) { canBuyCharges.checked = false; canBuyMaxCharges.checked = false; }
@@ -2520,11 +2803,11 @@ openManageTemplates.addEventListener("click", () => {
 
                     setTimeout(() => {
                         document.querySelectorAll('input[name="user_checkbox"]').forEach(cb => {
-                            cb.checked = t.userIds.includes(cb.value);
+                            cb.checked = (T.userIds || []).includes(cb.value);
                         });
                     }, 0);
 
-                    fillEditorFromTemplate(t);
+                    fillEditorFromTemplate(T);
                 });
 
                 const delButton = document.createElement('button');
@@ -2969,29 +3252,41 @@ async function refreshActiveBar() {
             const editBtn = document.createElement("button");
             editBtn.className = "mini-btn";
             editBtn.innerHTML = '<img src="icons/settings.svg">Edit';
-            editBtn.addEventListener("click", () => {
-                pendingUserSelection = Array.isArray(t.userIds) ? t.userIds.map(String) : [];
+            editBtn.addEventListener("click", async () => {
+                let T = t;
+                try {
+                    const { data } = await axios.get(`/template/${id}`);
+                    if (data) T = data;
+                } catch (_) { }
+
+                pendingUserSelection = Array.isArray(T.userIds) ? T.userIds.map(String) : [];
+                editSelectedUserIds = new Set(pendingUserSelection);
+                pendingUserSelection = Array.isArray(T.userIds) ? T.userIds.map(String) : [];
+                editSelectedUserIds = new Set(pendingUserSelection);
 
                 openAddTemplate.click();
-                templateFormTitle.textContent = `Edit Template: ${t.name}`;
+                templateFormTitle.textContent = `Edit Template: ${T.name}`;
                 submitTemplate.innerHTML = '<img src="icons/edit.svg">Save Changes';
                 templateForm.dataset.editId = id;
 
-                templateName.value = t.name;
-                [tx.value, ty.value, px.value, py.value] = t.coords;
-                canBuyCharges.checked = t.canBuyCharges;
-                canBuyMaxCharges.checked = t.canBuyMaxCharges;
-                antiGriefMode.checked = t.antiGriefMode;
-                paintTransparent.checked = !!t.paintTransparentPixels;
-                skipPaintedPixels.checked = !!t.skipPaintedPixels;
+                templateName.value = T.name;
+                [tx.value, ty.value, px.value, py.value] = T.coords;
+                canBuyCharges.checked = T.canBuyCharges;
+                canBuyMaxCharges.checked = T.canBuyMaxCharges;
+                antiGriefMode.checked = T.antiGriefMode;
+                paintTransparent.checked = !!T.paintTransparentPixels;
+                skipPaintedPixels.checked = !!T.skipPaintedPixels;
+                if (typeof T.heatmapEnabled !== 'undefined' && heatmapEnabled) heatmapEnabled.checked = !!T.heatmapEnabled;
+                if (heatmapLimitWrap) heatmapLimitWrap.style.display = heatmapEnabled && heatmapEnabled.checked ? '' : 'none';
+                if (typeof T.heatmapLimit !== 'undefined' && heatmapLimit) heatmapLimit.value = Math.max(1, Number(T.heatmapLimit || 10000));
 
                 setTimeout(() => {
                     document.querySelectorAll('input[name="user_checkbox"]').forEach(cb => {
-                        cb.checked = t.userIds.includes(cb.value);
+                        cb.checked = (T.userIds || []).includes(cb.value);
                     });
                 }, 0);
 
-                fillEditorFromTemplate(t);
+                fillEditorFromTemplate(T);
             });
 
             actions.appendChild(stopBtn);
@@ -3756,7 +4051,7 @@ openChangelog?.addEventListener('click', async () => {
             const content = (ch.data?.local || '').trim();
             if (content) {
                 const mdHtml = renderMarkdown(content);
-                changelog = `<div style="max-height:40vh; overflow:auto; border:1px solid var(--border); padding:8px; border-radius:6px; background: rgba(255,255,255,.04); text-align: left;">${mdHtml}</div>`;
+                changelog = `<div style="max-height:60vh; overflow:auto; border:1px solid var(--border); padding:8px; border-radius:6px; background: rgba(255,255,255,.04); text-align: left;">${mdHtml}</div>`;
             }
         } catch (_) { }
         const html = `<b>Current version</b> ${vers?.local || '?'}<br><br>${changelog || 'No changelog available.'}`;
