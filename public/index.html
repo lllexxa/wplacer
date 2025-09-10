@@ -347,6 +347,22 @@
                                     <span class="slider"></span>
                                 </label>
                             </div>
+
+                            <div class="setting-toggle">
+                                <label for="heatmapEnabled" class="label-margin0">Save painting history (heatmap)</label>
+                                <label class="switch" class="label-margin0">
+                                    <input id="heatmapEnabled" name="heatmapEnabled" type="checkbox" />
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="inline-field" id="heatmapLimitWrap" style="display:none;">
+                                <label for="heatmapLimit" class="label-margin0">History limit per template</label>
+                                <div class="input-affix">
+                                    <input type="number" id="heatmapLimit" min="1" value="10000" />
+                                    <span class="suffix">records</span>
+                                </div>
+                                <small class="help">Max entries in heatmap file. Oldest records are dropped.</small>
+                            </div>
                         </div>
 
                         <div class="settings-card" style="margin-top:10px; box-shadow: none;">

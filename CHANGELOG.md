@@ -1,3 +1,15 @@
+## Changelog v4.2.2
+- Front-End improvements:
+  - Added a counter to the palette header: “Remaining colors” now shows the total number of remaining pixels.
+  - Added a “Refresh canvas” button in the preview. Clicking it reloads the visible area.
+  - Added an overlay pixel scale slider (50–100%).
+  - When “Stop” is pressed, the template now stops right after the current request to a single tile (fixed).
+  - Heatmap: fixed and optimized (You can also now enable and configure this in the template settings).
+  - Fixed preserving user checkboxes when opening a template and when changing the user sort order.
+  - Added a progress counter to “Check Account Status”.
+  
+Note: The next update will focus on fixing drawing modes, improving template rendering with premium colors, and addressing other core issues. As this is a fork, occasional instability is expected.
+
 ## Changelog v4.2.1
 - Fixed an issue with alternating "Painted // Token expired/invalid" during drawing.
 - Added custom labeling for accounts (e.g., account email or browser profile) to facilitate easier navigation and management when refreshing cookies. Check "Edit User" section.
