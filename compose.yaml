@@ -2,6 +2,7 @@ services:
   wplacer:
     build:
       context: .
+    image: miacx/wplacer:lllexxa
     restart: unless-stopped
     environment:
       NODE_ENV: production
