@@ -1,0 +1,13 @@
+services:
+  wplacer:
+    build:
+      context: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3031
+      HOST: "0.0.0.0"
+    ports:
+      - 3031:3031
+    volumes:
+      - "./data:/usr/src/app/data"
