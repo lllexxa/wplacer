@@ -6,10 +6,10 @@ const TOKEN_TIMEOUT_ALARM_NAME = 'wplacer-token-timeout-alarm';
 const AUTO_RELOAD_ALARM_NAME = 'wplacer-auto-reload-alarm';
 
 const getSettings = async () => {
-    const result = await chrome.storage.local.get(['wplacerPort', 'wplacerAutoReload']);
+    const result = await chrome.storage.local.get(['wplacerPort', 'wplacerHost', 'wplacerAutoReload']);
     return {
         port: result.wplacerPort || 80,
-        host: '127.0.0.1',
+        host: result.wplacerHost ||'127.0.0.1',
         autoReloadInterval: result.wplacerAutoReload || 0
     };
 };
