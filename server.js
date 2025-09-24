@@ -4668,7 +4668,7 @@ app.get('/export-tokens', (req, res) => {
       for (const [id, template] of Object.entries(templates)) {
         if (template.autoStart && !template.running) {
           try {
-            await template.start();
+            Promise.resolve().then(() => template.start()).catch(err => console.error(`❌ Failed to auto-start template \"${template?.name || 'unknown'}\"`, err));
             autoStartedCount++;
             console.log(`🚀 Auto-started template: ${template.name}`);
           } catch (error) {
