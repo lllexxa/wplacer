@@ -10,5 +10,6 @@ services:
       HOST: "0.0.0.0"
     ports:
       - 3031:3031
-    volumes:
+    volumes: 
+      # if using the below bind mount, make sure the data directory is owned by 1000:1000
       - "./data:/usr/src/app/data"
