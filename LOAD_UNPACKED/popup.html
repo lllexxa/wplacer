@@ -10,15 +10,21 @@
         <h3>wplacer</h3>
     </div>
     <div class="content">
-        <div class="settings">
-            <label for="port">Server Port:</label>
-            <input type="number" id="port" min="1" max="65535" value="80">
-            <button id="saveSettingsBtn">Save</button>
-        </div>
-        <div class="settings">
-            <label for="autoReloadInterval">Auto-reload interval (seconds):</label>
-            <input type="number" id="autoReloadInterval" min="0" max="3600" value="0">
-        </div>
+        <form class="settings">
+            <label for="port">
+                Server Port:
+                <input type="number" id="port" min="1" max="65535" value="80">
+            </label>
+            <label for="host">
+                Server Host:
+                <input type="text" id="host" value="127.0.0.1">
+            </label>
+            <label for="autoReloadInterval">
+                Reload interval (s):
+                <input type="number" id="autoReloadInterval" min="0" max="3600" value="0">
+            </label>
+            <button type="submit" id="saveSettingsBtn">Save</button>
+        </form>
         <small>0 = disabled, 1-3600 = seconds between reloads</small>
         <p id="status">Ready. Tokens will be sent automatically.</p>
         <button id="sendCookieBtn">Manually Add/Update User</button>
