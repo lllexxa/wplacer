@@ -2131,7 +2131,7 @@ p.credits a img {
 .queue-user-item:first-child {
     position: sticky;
     top: 0;
-    z-index: 10;
+    z-index: 9;
     background: var(--bg-1);
     border-color: var(--accent);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
