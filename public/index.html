@@ -780,6 +780,26 @@
                             </button>
                         </div>
                     </header>
+                    
+                    <div class="settings-card">
+                        <div class="settings-card-head">
+                            <h3 class="settings-card-title">User Queue</h3>
+                            <p class="settings-card-sub">List of users and predicted charges</p>
+                        </div>
+
+                        <div class="summary" style="margin-top:10px">
+                            <div class="summary-line">
+                                <span><b>Total Charges:</b> <span id="queueTotalCharges">0</span>/<span id="queueTotalMaxCharges">0</span></span>
+                                <span><b>Charge Threshold:</b> <span id="queueChargeThreshold">0</span>%</span>
+                                <span><b>Ready to Paint:</b> <span id="queueReadyUsers">0</span></span>
+                            </div>
+                        </div>
+
+                        <div id="queueUserList" class="queue-user-list">
+                            <div class="queue-loading">Loading queue data...</div>
+                        </div>
+                    
+                    </div>
 
                     <div class="settings-card">
                         <div class="settings-card-head">
@@ -791,7 +811,6 @@
                             <div class="summary-line">
                                 <span><b>Last Update:</b> <span id="queueLastUpdate">–</span></span>
                                 <span><b>Total Users:</b> <span id="queueTotalUsers">0</span></span>
-                                <span><b>Ready to Paint:</b> <span id="queueReadyUsers">0</span></span>
                             </div>
                         </div>
 
@@ -816,17 +835,6 @@
                                     <span class="slider"></span>
                                 </label>
                             </div>
-                        </div>
-                    </div>
-
-                    <div class="settings-card">
-                        <div class="settings-card-head">
-                            <h3 class="settings-card-title">User Queue</h3>
-                            <p class="settings-card-sub">List of users and predicted charges</p>
-                        </div>
-
-                        <div id="queueUserList" class="queue-user-list">
-                            <div class="queue-loading">Loading queue data...</div>
                         </div>
                     </div>
                 </section>
