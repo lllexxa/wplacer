@@ -6409,9 +6409,24 @@ async function loadQueuePreview() {
 function updateQueueSummary(summary) {
     queueTotalUsers.textContent = summary.total;
     queueReadyUsers.textContent = summary.ready;
+    
+    const queueChargeThreshold = document.getElementById('queueChargeThreshold');
+    
+    const chargeThresholdValue = document.getElementById('chargeThreshold');
+    const thresholdPercent = chargeThresholdValue ? Number(chargeThresholdValue.value) || 50 : 50;
+    if (queueChargeThreshold) queueChargeThreshold.textContent = thresholdPercent;
 }
 
 function updateQueueUserList(users) {
+    const totalCharges = users.reduce((sum, user) => sum + (user.charges?.current || 0), 0);
+    const totalMaxCharges = users.reduce((sum, user) => sum + (user.charges?.max || 0), 0);
+    
+    const queueTotalCharges = document.getElementById('queueTotalCharges');
+    const queueTotalMaxCharges = document.getElementById('queueTotalMaxCharges');
+    
+    if (queueTotalCharges) queueTotalCharges.textContent = totalCharges;
+    if (queueTotalMaxCharges) queueTotalMaxCharges.textContent = totalMaxCharges;
+
     if (users.length === 0) {
         queueUserList.innerHTML = `
             <div class="queue-empty">
@@ -6456,9 +6471,9 @@ function updateQueueUserList(users) {
 function getStatusClass(status) {
     switch (status) {
         case 'ready': return 'queue-status-ready';
-        case 'waiting': return '⌛';
-        case 'cooldown': return '🔋';
-        case 'suspended': return '‼️';
+        case 'waiting': return 'queue-status-waiting';
+        case 'cooldown': return 'queue-status-cooldown';
+        case 'suspended': return 'queue-status-suspended';
         case 'active': return 'queue-status-ready';
         case 'no-data': return 'queue-status-cooldown';
         default: return 'queue-status-waiting';
@@ -6468,9 +6483,9 @@ function getStatusClass(status) {
 function getStatusText(status) {
     switch (status) {
         case 'ready': return 'Ready';
-        case 'waiting': return 'Waiting';
-        case 'cooldown': return 'Cooldown';
-        case 'suspended': return 'Suspended';
+        case 'waiting': return '⌛';
+        case 'cooldown': return '🔋';
+        case 'suspended': return '‼️';
         case 'active': return 'Active';
         case 'no-data': return 'No Data';
         default: return 'Unknown';
