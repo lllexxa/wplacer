@@ -8,6 +8,7 @@ import cors from "cors";
 import { CookieJar } from "tough-cookie";
 import { Impit } from "impit";
 import { Image, createCanvas, loadImage } from "canvas";
+import { initPawtect, setUserId, requestUrl, getPawtectedEndpointPayload } from './pawtect/pawtect.js';
 
 // --- Setup __dirname for ES modules ---
 const __filename = fileURLToPath(import.meta.url);
@@ -18,6 +19,15 @@ const dataDir = "./data";
 if (!existsSync(dataDir)) {
   mkdirSync(dataDir, { recursive: true });
 }
+// --- init pawtect ---
+let __pawtectWasm = null;
+let __pawtectInitPromise = null;
+async function getPawtectWasm() {
+  if (__pawtectWasm) return __pawtectWasm;
+  if (!__pawtectInitPromise) __pawtectInitPromise = initPawtect().then(w => (__pawtectWasm = w));
+  return __pawtectInitPromise;
+}
+
 // Heat maps directory
 const heatMapsDir = path.join(dataDir, "heat_maps");
 if (!existsSync(heatMapsDir)) {
@@ -398,6 +408,7 @@ class WPlacer {
     this.tiles = new Map();
     this.token = null;
     this.pawtect = null;
+    this.pawtectVariant = null;
     this._lastTilesAt = 0;
 
     // burst seeds persistence
@@ -529,6 +540,7 @@ class WPlacer {
       "Sec-Fetch-Site": "same-site"
     };
     if (this.pawtect) headers["x-pawtect-token"] = this.pawtect;
+    if (this.pawtectVariant) headers["x-pawtect-variant"] = this.pawtectVariant;
     const request = await this.browser.fetch(url, {
       method: "POST",
       headers,
@@ -660,8 +672,43 @@ class WPlacer {
   }
 
   async _executePaint(tx, ty, body) {
+    const wasm = await getPawtectWasm();
+    const url = `https://backend.wplace.live/s0/pixel/${tx}/${ty}`;
+    setUserId(wasm, this.userInfo.id);
+    requestUrl(wasm, url);
+    const expMap = (this.userInfo && this.userInfo.experiments) ? this.userInfo.experiments : null;
+    const expObj = (() => {
+      try {
+        if (!expMap || Object.keys(expMap).length === 0) return null;
+        for (const [k, v] of Object.entries(expMap)) {
+          if (v && typeof v.variant === 'string' && /pawtect/i.test(String(k))) return v;
+        }
+        for (const v of Object.values(expMap)) {
+          if (v && typeof v.variant === 'string') return v;
+        }
+      } catch {}
+      return null;
+    })();
+    if (!expObj) {
+      this.pawtectVariant = "koala";
+      if (!this.pawtect) {
+        this.pawtect = await getPawtectedEndpointPayload(wasm, JSON.stringify(body));
+      }
+    } else {
+      this.pawtectVariant = String(expObj.variant || "disabled");
+      if (this.pawtectVariant === "disabled") {
+        this.pawtect = "";
+      } else {
+        if (!this.pawtect) {
+          this.pawtect = await getPawtectedEndpointPayload(wasm, JSON.stringify(body));
+        }
+      }
+    }
+    if (this.pawtect != "") {
+      log("SYSTEM", "wplacer", `🛡️ TOKEN_MANAGER: Pawtect token ${this.pawtect.substring(0, 20)}... [${this.pawtectVariant}|${!!expObj}]`);
+    }
     if (body.colors.length === 0) return { painted: 0, success: true };
-    const response = await this.post(`https://backend.wplace.live/s0/pixel/${tx}/${ty}`, body);
+    const response = await this.post(url, body);
 
     if (response.data.painted && response.data.painted === body.colors.length) {
       log(this.userInfo.id, this.userInfo.name, `[${this.templateName}] 🎨 Painted ${body.colors.length} pixels on tile ${tx}, ${ty}.`);
