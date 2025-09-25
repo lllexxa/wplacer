@@ -789,32 +789,28 @@
 
                         <div class="summary" style="margin-top:10px">
                             <div class="summary-line">
-                                <span><b>Total Charges:</b> <span id="queueTotalCharges">0</span>/<span id="queueTotalMaxCharges">0</span></span>
-                                <span><b>Charge Threshold:</b> <span id="queueChargeThreshold">0</span>%</span>
+                                <span><b>Total Users:</b> <span id="queueTotalUsers">0</span></span>
                                 <span><b>Ready to Paint:</b> <span id="queueReadyUsers">0</span></span>
+                                <span><b>Charge Threshold:</b> <span id="queueChargeThreshold">0</span>%</span>
+                                <span><b>Total Charges:</b> <span id="queueTotalCharges">0</span>/<span id="queueTotalMaxCharges">0</span></span>
                             </div>
                         </div>
-
                         <div id="queueUserList" class="queue-user-list">
                             <div class="queue-loading">Loading queue data...</div>
                         </div>
-                    
-                    </div>
-
-                    <div class="settings-card">
-                        <div class="settings-card-head">
-                            <h3 class="settings-card-title">Queue Status</h3>
-                            <p class="settings-card-sub">Predicted charges of users in queue</p>
-                        </div>
-
                         <div class="summary" style="margin-bottom:8px">
                             <div class="summary-line">
                                 <span><b>Last Update:</b> <span id="queueLastUpdate">–</span></span>
-                                <span><b>Total Users:</b> <span id="queueTotalUsers">0</span></span>
                             </div>
-                        </div>
-
-                        <div class="queue-controls">
+                            <div class="queue-controls">
+                                <div class="setting-toggle">
+                                    <label for="hideSensitiveInfoQueue" class="label-margin0">Hide sensitive info</label>
+                                    <label class="switch">
+                                        <input id="hideSensitiveInfoQueue" name="hideSensitiveInfoQueue" type="checkbox" />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
                             <div class="setting-toggle">
                                 <div class="auto-refresh-group" id="autoRefreshGroup">
                                     <label for="autoRefreshQueue" class="label-margin0">Auto refresh</label>
@@ -825,13 +821,6 @@
                                 </div>
                                 <label class="switch">
                                     <input id="autoRefreshQueue" name="autoRefreshQueue" type="checkbox" checked />
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
-                            <div class="setting-toggle">
-                                <label for="hideSensitiveInfoQueue" class="label-margin0">Hide sensitive info</label>
-                                <label class="switch">
-                                    <input id="hideSensitiveInfoQueue" name="hideSensitiveInfoQueue" type="checkbox" />
                                     <span class="slider"></span>
                                 </label>
                             </div>
