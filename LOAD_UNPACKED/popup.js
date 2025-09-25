@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const portInput = document.getElementById('port');
     const autoReloadInput = document.getElementById('autoReloadInterval');
     const saveBtn = document.getElementById('saveSettingsBtn');
+    const serverPawtectToggle = document.getElementById('serverPawtectToggle');
     const sendCookieBtn = document.getElementById('sendCookieBtn');
     const logoutBtn = document.getElementById('logoutBtn');
 
@@ -10,11 +11,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let initialAutoReload = 0;
 
     // Load current settings
-    chrome.storage.local.get(['wplacerPort', 'wplacerAutoReload'], (result) => {
+    chrome.storage.local.get(['wplacerPort', 'wplacerAutoReload', 'wplacerServerPawtect'], (result) => {
         initialPort = result.wplacerPort || 80;
         initialAutoReload = result.wplacerAutoReload || 0;
         portInput.value = initialPort;
         autoReloadInput.value = initialAutoReload;
+        serverPawtectToggle.checked = !!result.wplacerServerPawtect;
     });
 
     // Save settings
@@ -34,7 +36,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         chrome.storage.local.set({ 
             wplacerPort: port,
-            wplacerAutoReload: autoReload
+            wplacerAutoReload: autoReload,
+            wplacerServerPawtect: !!serverPawtectToggle.checked
         }, () => {
             const reloadText = autoReload > 0 ? ` Auto-reload: ${autoReload}s.` : ' Auto-reload: disabled.';
             statusEl.textContent = `Settings saved. Server on port ${port}.${reloadText}`;

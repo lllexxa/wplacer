@@ -6,11 +6,12 @@ const TOKEN_TIMEOUT_ALARM_NAME = 'wplacer-token-timeout-alarm';
 const AUTO_RELOAD_ALARM_NAME = 'wplacer-auto-reload-alarm';
 
 const getSettings = async () => {
-    const result = await chrome.storage.local.get(['wplacerPort', 'wplacerAutoReload']);
+    const result = await chrome.storage.local.get(['wplacerPort', 'wplacerAutoReload', 'wplacerServerPawtect']);
     return {
         port: result.wplacerPort || 80,
         host: '127.0.0.1',
-        autoReloadInterval: result.wplacerAutoReload || 0
+        autoReloadInterval: result.wplacerAutoReload || 0,
+        serverPawtect: !!result.wplacerServerPawtect
     };
 };
 
@@ -22,7 +23,7 @@ const getServerUrl = async (path = '') => {
 let LP_ACTIVE = false;
 let TOKEN_IN_PROGRESS = false;
 let LAST_RELOAD_AT = 0;
-const MIN_RELOAD_INTERVAL_MS = 5000;
+const MIN_RELOAD_INTERVAL_MS = 15000;
 const TOKEN_TIMEOUT_MS = 25000;
 let TOKEN_TIMEOUT_ID = null;
 const FAST_RETRY_DELAY_MS = 7000;
@@ -157,6 +158,10 @@ const pollForTokenRequest = async () => {
 
 const injectPawtectIntoTab = async (tabId) => {
     try {
+        const settings = await getSettings();
+        if (settings.serverPawtect) {
+            return; // skip injection when using server-side pawtect
+        }
         await chrome.scripting.executeScript({
             target: { tabId },
             world: 'MAIN',
@@ -243,6 +248,7 @@ const injectPawtectIntoTab = async (tabId) => {
 
 const initiateReload = async () => {
     try {
+        const settings = await getSettings();
         let tabs = await chrome.tabs.query({ url: "https://wplace.live/*" });
         if (!tabs || tabs.length === 0) {
             console.warn("wplacer: No wplace.live tabs found. Opening a new one for token acquisition.");
@@ -250,30 +256,26 @@ const initiateReload = async () => {
             tabs = [created];
         }
         const targetTab = tabs.find(t => t.active) || tabs[0];
-        console.log(`wplacer: Preparing tab #${targetTab.id} for token reload (inject pawtect + reload)`);
+        console.log(`wplacer: Preparing tab #${targetTab.id} for token reload`);
         try { await injectPawtectIntoTab(targetTab.id); } catch {}
         await wait(150);
         console.log(`wplacer: Sending reload command to tab #${targetTab.id}`);
         try { await chrome.tabs.sendMessage(targetTab.id, { action: "reloadForToken" }); } catch {}
-        // Ensure reload even if content script didn't handle the message
-        setTimeout(async () => {
-            try {
-                await chrome.tabs.update(targetTab.id, { active: true });
-            } catch {}
-            try {
-                await chrome.tabs.reload(targetTab.id, { bypassCache: true });
-            } catch {
-                try {
-                    const appended = (targetTab.url || 'https://wplace.live/').replace(/[#?]$/, '');
-                    const url = appended + (appended.includes('?') ? '&' : '?') + 'wplacer=' + Date.now();
-                    await chrome.tabs.update(targetTab.id, { url });
-                } catch {}
-            }
-            // Second shot after 1.5s if нужно
+        if (!settings.serverPawtect) {
             setTimeout(async () => {
-                try { const t = await chrome.tabs.get(targetTab.id); if (t.status !== 'loading') { await chrome.tabs.reload(targetTab.id, { bypassCache: true }); } } catch {}
-            }, 1500);
-        }, 200);
+                try { await chrome.tabs.update(targetTab.id, { active: true }); } catch {}
+                try { await chrome.tabs.reload(targetTab.id, { bypassCache: true }); } catch {
+                    try {
+                        const appended = (targetTab.url || 'https://wplace.live/').replace(/[#?]$/, '');
+                        const url = appended + (appended.includes('?') ? '&' : '?') + 'wplacer=' + Date.now();
+                        await chrome.tabs.update(targetTab.id, { url });
+                    } catch {}
+                }
+                setTimeout(async () => {
+                    try { const t = await chrome.tabs.get(targetTab.id); if (t.status !== 'loading') { await chrome.tabs.reload(targetTab.id, { bypassCache: true }); } } catch {}
+                }, 1500);
+            }, 200);
+        }
     } catch (error) {
         console.error("wplacer: Error sending reload message to tab, falling back to direct reload.", error);
         const tabs = await chrome.tabs.query({ url: "https://wplace.live/*" });
@@ -767,16 +769,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
     if (request.type === "SEND_TOKEN") {
-        getServerUrl("/t").then(url => {
-            fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    t: request.token,
-                    pawtect: request.pawtect || null,
-                    fp: request.fp || null
-                })
-            });
+        Promise.all([getServerUrl("/t"), getSettings()]).then(([url, settings]) => {
+            const payload = settings.serverPawtect ? { t: request.token, pawtect: null, fp: request.fp || null } : { t: request.token, pawtect: request.pawtect || null, fp: request.fp || null };
+            fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         });
         clearTokenWait();
         LAST_RELOAD_AT = Date.now();
@@ -785,19 +780,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    try {
-        if (tab.url?.startsWith("https://wplace.live")) {
-            if (changeInfo.status === 'loading') {
-                // preinstall pawtect early
-                injectPawtectIntoTab(tabId).catch(() => {});
+    (async () => {
+        try {
+            if (tab.url?.startsWith("https://wplace.live")) {
+                const settings = await getSettings();
+                if (changeInfo.status === 'loading') {
+                    if (!settings.serverPawtect) injectPawtectIntoTab(tabId).catch(() => {});
+                }
+                if (changeInfo.status === 'complete') {
+                    console.log("wplacer: wplace.live tab loaded. Sending cookie.");
+                    if (!settings.serverPawtect) injectPawtectIntoTab(tabId).catch(() => {});
+                    sendCookie(response => console.log(`wplacer: Cookie send status: ${response.success ? 'Success' : 'Failed'}`));
+                }
             }
-            if (changeInfo.status === 'complete') {
-                console.log("wplacer: wplace.live tab loaded. Sending cookie.");
-                injectPawtectIntoTab(tabId).catch(() => {});
-                sendCookie(response => console.log(`wplacer: Cookie send status: ${response.success ? 'Success' : 'Failed'}`));
-            }
-        }
-    } catch {}
+        } catch {}
+    })();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {

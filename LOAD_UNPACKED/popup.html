@@ -19,6 +19,10 @@
             <label for="autoReloadInterval">Auto-reload interval (seconds):</label>
             <input type="number" id="autoReloadInterval" min="0" max="3600" value="0">
         </div>
+        <div class="settings">
+            <label for="serverPawtectToggle">Use server-side Pawtect:</label>
+            <input type="checkbox" id="serverPawtectToggle">
+        </div>
         <small>0 = disabled, 1-3600 = seconds between reloads</small>
         <p id="status">Ready. Tokens will be sent automatically.</p>
         <button id="sendCookieBtn">Manually Add/Update User</button>

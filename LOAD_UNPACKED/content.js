@@ -12,9 +12,19 @@ if (sessionStorage.getItem(RELOAD_FLAG)) {
 
 const sentTokens = new Set();
 const pending = { turnstile: null, pawtect: null };
+let SERVER_PAWTECT = false;
+try { chrome.storage.local.get(['wplacerServerPawtect'], r => { SERVER_PAWTECT = !!r.wplacerServerPawtect; }); } catch {}
 
 const trySendPair = () => {
-    if (!pending.turnstile || !pending.pawtect) return;
+    if (!pending.turnstile) return;
+    if (SERVER_PAWTECT) {
+        const t = pending.turnstile;
+        postToken(t, null);
+        pending.turnstile = null;
+        pending.pawtect = null;
+        return;
+    }
+    if (!pending.pawtect) return;
     const t = pending.turnstile;
     const p = pending.pawtect || null;
     postToken(t, p);
@@ -60,18 +70,16 @@ window.addEventListener('message', (event) => {
         const token = event.data.token || event.data.response || event.data['cf-turnstile-response'];
         if (token) {
             pending.turnstile = token;
-            const fp = window.wplacerFP || sessionStorage.getItem('wplacer_fp') || generateRandomHex(32);
-            const body = { colors: [0], coords: [1, 1], fp, t: token };
-            try {
-                chrome.runtime.sendMessage({
-                    action: 'computePawtectForT',
-                    url: 'https://backend.wplace.live/s0/pixel/1/1',
-                    bodyStr: JSON.stringify(body)
-                });
-            } catch {}
-            if (window.wplacerPawtectToken) {
-                pending.pawtect = window.wplacerPawtectToken;
-                try { delete window.wplacerPawtectToken; } catch {}
+            if (!SERVER_PAWTECT) {
+                const fp = window.wplacerFP || sessionStorage.getItem('wplacer_fp') || generateRandomHex(32);
+                const body = { colors: [0], coords: [1, 1], fp, t: token };
+                try {
+                    chrome.runtime.sendMessage({ action: 'computePawtectForT', url: 'https://backend.wplace.live/s0/pixel/1/1', bodyStr: JSON.stringify(body) });
+                } catch {}
+                if (window.wplacerPawtectToken) {
+                    pending.pawtect = window.wplacerPawtectToken;
+                    try { delete window.wplacerPawtectToken; } catch {}
+                }
             }
             trySendPair();
         }
