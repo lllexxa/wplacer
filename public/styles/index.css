@@ -2088,6 +2088,7 @@ p.credits a img {
     scrollbar-width: thin;
     scrollbar-color: var(--muted) var(--bg-3);
     position: relative;
+    margin-top: 10px;
 }
 
 .queue-user-list::-webkit-scrollbar {
@@ -2310,8 +2311,8 @@ p.credits a img {
     transition: all 0.3s ease;
     white-space: nowrap;
     flex-shrink: 0;
-    min-width: 100px;
-    max-width: 100px;
+    min-width: 120px;
+    max-width: 120px;
     text-align: justify;
 }
 
